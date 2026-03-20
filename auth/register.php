@@ -4,43 +4,64 @@ header("Cache-Control: no-cache, no-store, must-revalidate");
 header("Pragma: no-cache");
 header("Expires: 0");
 
-
 include("../config/db.php");
 
 $message = "";
 $messageType = "";
 
-if (isset($_POST['register'])){
-    $userName = $_POST['username'];
-    $email = $_POST['email'];
-    $password = $_POST['password'];
-    $password = md5($password);
+$userName = "";
+$email = "";
 
-    $checkEmail = "SELECT * FROM User Where uemail = '$email'";
-    $result = $conn->query($checkEmail);
-    if($result->num_rows>0){
-        $message = "Email already exists.";
+if (isset($_POST['register'])) {
+    $userName = trim($_POST['username']);
+    $email = trim($_POST['email']);
+    $password = trim($_POST['password']);
+    $confirmPassword = trim($_POST['confirm_password']);
+
+    if (empty($userName) || empty($email) || empty($password) || empty($confirmPassword)) {
+        $message = "All fields are required.";
         $messageType = "error";
-    }
+    } elseif (strlen($userName) < 3) {
+        $message = "Username must be at least 3 characters long.";
+        $messageType = "error";
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $message = "Please enter a valid email address.";
+        $messageType = "error";
+    } elseif (strlen($password) < 6) {
+        $message = "Password must be at least 6 characters long.";
+        $messageType = "error";
+    } elseif ($password !== $confirmPassword) {
+        $message = "Passwords do not match.";
+        $messageType = "error";
+    } else {
+        $checkEmail = "SELECT * FROM User WHERE uemail = ?";
+        $stmt = $conn->prepare($checkEmail);
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $result = $stmt->get_result();
 
-    else{
-        $insertQuery = "INSERT INTO User(username,uemail,upassword) VALUES ('$userName','$email','$password')";
-        if($conn->query($insertQuery) === TRUE){
-            $message = "Regstration successfull";
-            $messageType = "success";
-        }
-
-        else{
-            $message = "Error: " . $conn->error;
+        if ($result->num_rows > 0) {
+            $message = "Email already exists.";
             $messageType = "error";
+        } else {
+            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+
+            $insertQuery = "INSERT INTO User (username, uemail, upassword) VALUES (?, ?, ?)";
+            $stmt = $conn->prepare($insertQuery);
+            $stmt->bind_param("sss", $userName, $email, $hashedPassword);
+
+            if ($stmt->execute()) {
+                $message = "Registration successful.";
+                $messageType = "success";
+                $userName = "";
+                $email = "";
+            } else {
+                $message = "Error: " . $conn->error;
+                $messageType = "error";
+            }
         }
-
     }
-
-
-
 }
-
 ?>
 
 <!DOCTYPE html>
@@ -73,7 +94,7 @@ if (isset($_POST['register'])){
             name="username"
             class="form-control"
             placeholder="Enter your username"
-            value="<?php echo isset($userName) ? htmlspecialchars($userName) : ''; ?>"
+            value="<?php echo htmlspecialchars($userName); ?>"
           >
         </div>
 
@@ -85,7 +106,7 @@ if (isset($_POST['register'])){
             name="email"
             class="form-control"
             placeholder="Enter your email"
-            value="<?php echo isset($email) ? htmlspecialchars($email) : ''; ?>"
+            value="<?php echo htmlspecialchars($email); ?>"
           >
         </div>
 
@@ -100,7 +121,18 @@ if (isset($_POST['register'])){
           >
         </div>
 
-        <button type="submit" class="btn form-btn" name = "register">Register</button>
+        <div class="form-group">
+          <label for="confirm_password">Confirm Password</label>
+          <input
+            type="password"
+            id="confirm_password"
+            name="confirm_password"
+            class="form-control"
+            placeholder="Confirm your password"
+          >
+        </div>
+
+        <button type="submit" class="btn form-btn" name="register">Register</button>
       </form>
 
       <p class="bottom-text">
